@@ -1,0 +1,140 @@
+<style>
+  .hudrow { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 10px; }
+  .pips { display: flex; gap: 6px; }
+  .pips i { width: 22px; height: 22px; border-radius: 6px; background: var(--panel2); border: 2px solid var(--line); display: block; }
+  .pips i.ok { background: var(--mint); border-color: var(--mint); }
+  .hearts { font-size: 20px; letter-spacing: 2px; }
+  .given { display: flex; gap: 26px; flex-wrap: wrap; align-items: baseline; }
+  .given .v { font-family: var(--mono); font-size: 30px; font-weight: 800; }
+  svg.nl { width: 100%; height: auto; display: block; background: #0f1430; border-radius: 12px; border: 2px solid var(--line); margin-top: 10px; }
+  .keys { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+  .keys button { padding: 8px 0; font-family: var(--mono); font-size: 18px; }
+  .keys button small { display: block; font-size: 10px; font-weight: 600; opacity: 0.7; }
+  .fb { margin-top: 12px; min-height: 64px; font-size: 14.5px; }
+  .hidden-line { text-align: center; padding: 26px 10px; border: 2px dashed var(--line); border-radius: 12px; margin-top: 10px; color: var(--muted); }
+</style>
+<div class="wrap">
+  <h2><span class="tag">小遊戲</span>人肉量化機</h2>
+  <p class="sub">你就是量化器！看 <span class="mono">d</span> 和權重 <span class="mono">x</span>，選出正確的 4-bit 代碼。答對 5 題就能拿到通關密語；答錯 3 次要重來。</p>
+  <div class="panel">
+    <div class="hudrow">
+      <div class="pips" id="pips"></div>
+      <div class="hearts" id="hearts"></div>
+      <div class="muted" id="lvl" style="font-size:13px"></div>
+    </div>
+    <div class="given">
+      <div><span class="muted">scale　d = </span><span class="v sky" id="d"></span></div>
+      <div><span class="muted">權重　x = </span><span class="v gold" id="x"></span></div>
+    </div>
+    <div id="lineBox"></div>
+    <div class="keys" id="keys"></div>
+    <div class="fb" id="fb"></div>
+  </div>
+  <div id="win"></div>
+</div>
+<script>
+  (function () {
+    const NEED = 5, LIVES = 3;
+    const rand = mulberry32((Date.now() & 0xffff) + 3);
+    const pick = (arr) => arr[(rand() * arr.length) | 0];
+    let got, lives, cur, locked;
+
+    function newRound() {
+      const stage = got;                       // 0..4，越後面越難
+      const neg = stage === 2 || (stage >= 3 && rand() < 0.5);
+      const mag = pick(stage < 3 ? [0.02, 0.05, 0.1] : [0.01, 0.02, 0.05]);
+      const d = neg ? -mag : mag;
+      let code, x;
+      if (stage === 3) {                       // 會被夾住的情況
+        code = 15;
+        x = (7.6 + rand() * 0.35) * d;
+      } else {
+        code = 1 + ((rand() * 14) | 0);
+        x = (code - 8 + (rand() * 0.6 - 0.3)) * d;
+      }
+      x = Math.round(x * 10000) / 10000;
+      const raw = x / d + 8.5;
+      code = clamp(Math.trunc(raw), 0, 15);
+      cur = { d, x, code, raw, showLine: stage < 4, stage };
+      locked = false;
+      render();
+    }
+    function line() {
+      const { d, x } = cur;
+      const W = 820, PAD = 40, a = Math.abs(d);
+      const X = (v) => PAD + ((v + 8.6 * a) / (17.2 * a)) * (W - 2 * PAD);
+      let s = `<line x1="${PAD}" y1="70" x2="${W - PAD}" y2="70" stroke="#36407a" stroke-width="2"/>`;
+      for (let c = 0; c < 16; c++) {
+        const v = (c - 8) * d;
+        s += `<line x1="${X(v)}" y1="56" x2="${X(v)}" y2="84" stroke="#74b9ff" stroke-width="2"/>`;
+        s += `<text x="${X(v)}" y="104" text-anchor="middle" font-size="14" font-weight="700" fill="#74b9ff" font-family="monospace">${c.toString(16).toUpperCase()}</text>`;
+        if (c % 4 === 0 || c === 15) s += `<text x="${X(v)}" y="122" text-anchor="middle" font-size="10.5" fill="#a3abd6" font-family="monospace">${fmt(v, 2)}</text>`;
+      }
+      s += `<path d="M ${X(x)} 52 l -8 -14 l 16 0 z" fill="#ffd166"/>`;
+      s += `<text x="${X(x)}" y="28" text-anchor="middle" font-size="13" font-weight="700" fill="#ffd166" font-family="monospace">x = ${fmt(x, 4)}</text>`;
+      s += `<text x="${W - PAD}" y="140" text-anchor="end" font-size="11" fill="#a3abd6">每個刻度 = (代碼 − 8) × d</text>`;
+      return `<svg class="nl" viewBox="0 0 820 148" role="img" aria-label="16 個量化等級的數線">${s}</svg>`;
+    }
+    function render() {
+      $('#pips').innerHTML = Array.from({ length: NEED }, (_, i) => `<i class="${i < got ? 'ok' : ''}"></i>`).join('');
+      $('#hearts').textContent = '❤️'.repeat(lives) + '🖤'.repeat(LIVES - lives);
+      const names = ['暖身', '再一題', '注意：d 是負的！', '小心：會超出範圍', '魔王關：沒有數線，心算！'];
+      $('#lvl').textContent = `第 ${got + 1} / ${NEED} 題　${names[cur.stage]}`;
+      $('#d').textContent = fmt(cur.d, 2);
+      $('#x').textContent = fmt(cur.x, 4);
+      $('#lineBox').innerHTML = cur.showLine ? line()
+        : '<div class="hidden-line">數線被魔王偷走了！用公式心算：<span class="code">代碼 = 去掉小數( x ÷ d + 8.5 )</span>，再夾進 0~15</div>';
+      $('#keys').innerHTML = Array.from({ length: 16 }, (_, c) =>
+        `<button class="ghost" data-c="${c}">${c.toString(16).toUpperCase()}<small>${c}</small></button>`).join('');
+      $('#fb').innerHTML = '<span class="muted">提示：代碼 = 去掉小數( x ÷ d + 8.5 )，結果超過 15 就當 15。</span>';
+      fit();
+    }
+    function answer(c) {
+      if (locked) return;
+      locked = true;
+      const { d, x, code, raw } = cur;
+      const calc = `x ÷ d + 8.5 = ${fmt(x, 4)} ÷ ${fmt(d, 2)} + 8.5 = <b class="mono">${fmt(raw, 2)}</b>　→　去掉小數${raw >= 16 ? '是 16，超過了，夾成' : ' ='} <b class="mono">${code}</b>　→　代碼 <b class="gold mono">${code.toString(16).toUpperCase()}</b>`;
+      $$('#keys button').forEach((b) => {
+        b.disabled = true;
+        if (+b.dataset.c === code) b.classList.add('on');
+      });
+      if (c === code) {
+        got++;
+        $('#fb').innerHTML = `<span class="mint"><b>✔ 答對了！</b></span>　${calc}`;
+        if (got >= NEED) return win();
+      } else {
+        lives--;
+        $('.panel').classList.add('shake');
+        setTimeout(() => $('.panel').classList.remove('shake'), 400);
+        $('#fb').innerHTML = `<span class="red"><b>✘ 差一點！</b></span>　${calc}`;
+        if (lives <= 0) {
+          $('#fb').innerHTML += '<br><span class="pink">愛心用完了…… OOM 魔王在偷笑。再挑戰一次！</span>';
+          $('#fb').innerHTML += ' <button id="again" style="margin-left:8px">重新挑戰</button>';
+          $('#again').addEventListener('click', start);
+          $('#hearts').textContent = '🖤'.repeat(LIVES);
+          fit();
+          return;
+        }
+      }
+      $('#hearts').textContent = '❤️'.repeat(lives) + '🖤'.repeat(LIVES - lives);
+      $('#pips').innerHTML = Array.from({ length: NEED }, (_, i) => `<i class="${i < got ? 'ok' : ''}"></i>`).join('');
+      $('#fb').innerHTML += ' <button id="nx" style="margin-left:8px">下一題 ▶</button>';
+      $('#nx').addEventListener('click', newRound);
+      fit();
+    }
+    function win() {
+      $('#pips').innerHTML = Array.from({ length: NEED }, () => '<i class="ok"></i>').join('');
+      confetti();
+      $('#win').innerHTML = passBox('NIBBLE', '4 個 bit 剛好是半個 byte，英文就叫 nibble（小咬一口）。把它填進下一格！');
+      fit();
+    }
+    function start() {
+      got = 0;
+      lives = LIVES;
+      $('#win').innerHTML = '';
+      newRound();
+    }
+    $('#keys').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) answer(+b.dataset.c); });
+    start();
+  })();
+</script>

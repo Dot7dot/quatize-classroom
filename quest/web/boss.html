@@ -1,0 +1,82 @@
+<style>
+  .arena { position: relative; border-radius: 14px; border: 2px solid var(--line); overflow: hidden; padding: 16px;
+    background: radial-gradient(ellipse at 50% 20%, #5a1f5e 0%, #2a1136 60%, #160a22 100%); text-align: center; }
+  .bossname { font-weight: 800; color: #d9b8ff; letter-spacing: 0.08em; }
+  .hp { height: 20px; border-radius: 999px; background: #160a22; border: 2px solid #7a4ba8; overflow: hidden; margin: 6px auto 0; max-width: 520px; }
+  .hp div { height: 100%; width: 100%; background: linear-gradient(90deg, #ff5964, #ff9f5a); transition: width 0.7s cubic-bezier(.2,.8,.2,1); }
+  .hpt { font-family: var(--mono); font-size: 12px; color: #d9b8ff; margin-top: 2px; }
+  .bossbox { position: relative; display: inline-block; margin: 14px 0 6px; transition: transform 0.8s, opacity 0.8s, filter 0.8s; }
+  .bossbox.dead { transform: scale(0.25) rotate(40deg); opacity: 0.25; filter: grayscale(1); }
+  .dmg { position: absolute; left: 50%; top: 0; transform: translateX(-50%); font-family: var(--mono); font-size: 34px; font-weight: 800; color: var(--gold);
+    text-shadow: 0 3px 0 #000; animation: fly 0.9s ease-out forwards; pointer-events: none; }
+  @keyframes fly { from { opacity: 1; margin-top: 0; } to { opacity: 0; margin-top: -70px; } }
+  .taunt { min-height: 26px; font-size: 15px; color: #e7d2ff; }
+  .skills { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-top: 14px; }
+  .skill { text-align: left; background: var(--panel2); color: var(--ink); border: 2px solid var(--line); border-radius: 12px; padding: 10px 12px;
+    box-shadow: 0 4px 0 #171d3c; font-weight: 600; line-height: 1.5; }
+  .skill b { color: var(--gold); display: block; font-size: 15px; }
+  .skill small { color: var(--muted); font-size: 12.5px; }
+  .skill.used { opacity: 0.45; box-shadow: none; transform: translateY(3px); }
+  .skill .pw { float: right; font-family: var(--mono); color: var(--pink); font-weight: 800; }
+  .victory { margin-top: 14px; text-align: center; font-size: 20px; font-weight: 800; color: var(--gold); }
+</style>
+<div class="wrap">
+  <h2><span class="tag">最終決戰</span>打倒 OOM 魔王！</h2>
+  <p class="sub">你這一路上完成的每件事，都是一招必殺技。一張一張點下去！</p>
+  <div class="arena">
+    <div class="bossname">👾 OOM 魔王</div>
+    <div class="hp"><div id="hp"></div></div>
+    <div class="hpt" id="hpt"></div>
+    <div class="bossbox" id="boss"></div>
+    <div class="taunt" id="taunt">「哼，區區見習生，也想把模型塞進小機器？Killed！」</div>
+  </div>
+  <div class="skills" id="skills"></div>
+  <div class="victory" id="victory"></div>
+</div>
+<script>
+  (function () {
+    const D = window.DATA;
+    const hits = D.hits || [];
+    const total = hits.reduce((a, h) => a + h.dmg, 0) || 1;
+    let hp = total;
+    const TAUNTS = ['「嗚！這、這只是擦傷！」', '「等等，4 個 bit 怎麼可能夠用？！」', '「我的記憶體……我吃不到記憶體了……」', '「不要再壓縮了！住手！」', '「可惡……我還會回來的……（才怪）」'];
+    $('#boss').innerHTML = sprite('oom', 9);
+    function hud() {
+      $('#hp').style.width = (hp / total) * 100 + '%';
+      $('#hpt').textContent = `HP ${Math.max(0, Math.round((hp / total) * 9999))} / 9999`;
+    }
+    $('#skills').innerHTML = hits.map((h, i) =>
+      `<button class="skill" data-i="${i}"><span class="pw">⚔ ${Math.round((h.dmg / total) * 9999)}</span><b>${h.label}</b><small>${h.detail}</small></button>`).join('');
+    let used = 0;
+    $('#skills').addEventListener('click', (e) => {
+      const b = e.target.closest('.skill');
+      if (!b || b.classList.contains('used')) return;
+      const h = hits[+b.dataset.i];
+      b.classList.add('used');
+      b.disabled = true;
+      hp -= h.dmg;
+      const box = $('#boss');
+      box.classList.remove('shake');
+      void box.offsetWidth;
+      box.classList.add('shake');
+      const d = document.createElement('div');
+      d.className = 'dmg';
+      d.textContent = '-' + Math.round((h.dmg / total) * 9999);
+      box.appendChild(d);
+      setTimeout(() => d.remove(), 950);
+      $('#taunt').textContent = TAUNTS[Math.min(used, TAUNTS.length - 1)];
+      used++;
+      hud();
+      if (used >= hits.length) {
+        setTimeout(() => {
+          box.classList.add('dead');
+          $('#taunt').textContent = '「Out…… of…… memory……」';
+          $('#victory').innerHTML = '🎉 K.O.！OOM 魔王被你量化成 0 了！<div class="muted" style="font-size:14px;font-weight:600;margin-top:4px">往下執行，領取你的畢業證書。</div>';
+          confetti(3000);
+          fit();
+        }, 700);
+      }
+    });
+    hud();
+  })();
+</script>

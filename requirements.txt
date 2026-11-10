@@ -1,0 +1,9 @@
+# 量化教室需要的套件（Notebook 第一格會自動安裝）
+numpy
+gguf>=0.17
+huggingface_hub
+torch
+transformers
+sentencepiece
+protobuf
+matplotlib

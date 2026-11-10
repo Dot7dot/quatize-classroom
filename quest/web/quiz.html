@@ -1,0 +1,58 @@
+<style>
+  .q { margin-top: 12px; }
+  .q .t { font-weight: 800; font-size: 15.5px; }
+  .q .t span { color: var(--gold); margin-right: 6px; }
+  .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin-top: 10px; }
+  .opt { text-align: left; background: var(--panel2); color: var(--ink); border: 2px solid var(--line); border-radius: 10px; padding: 8px 12px;
+    box-shadow: 0 3px 0 #171d3c; font-weight: 600; font-size: 14px; line-height: 1.45; }
+  .opt.right { background: var(--mint); color: var(--bg); border-color: var(--mint); box-shadow: none; }
+  .opt.wrong { background: #5a2434; border-color: var(--red); color: #ffd6d6; box-shadow: none; opacity: 0.8; }
+  .why { margin-top: 8px; font-size: 13.5px; color: var(--muted); display: none; }
+  .why.show { display: block; }
+  .score { font-family: var(--mono); font-weight: 800; color: var(--gold); }
+</style>
+<div class="wrap">
+  <h2><span class="tag" id="tag">隨堂考</span><span id="title"></span></h2>
+  <p class="sub">全部答對就會出現通關密語。答錯可以再選，不扣分 —— 但咕咕夫教授會在旁邊挑眉毛。　<span class="score" id="score"></span></p>
+  <div id="qs"></div>
+  <div id="win"></div>
+</div>
+<script>
+  (function () {
+    const D = window.DATA;
+    const qs = D.questions || [];
+    $('#title').textContent = D.title || '';
+    if (D.tag) $('#tag').textContent = D.tag;
+    const done = qs.map(() => false);
+    $('#qs').innerHTML = qs.map((q, i) =>
+      `<div class="panel q" data-q="${i}"><div class="t"><span>Q${i + 1}.</span>${q.q}</div>
+        <div class="opts">${q.options.map((o, j) => `<button class="opt" data-o="${j}">${o}</button>`).join('')}</div>
+        <div class="why">🦙 ${q.why || ''}</div></div>`).join('');
+    function score() { $('#score').textContent = `${done.filter(Boolean).length} / ${qs.length}`; }
+    $('#qs').addEventListener('click', (e) => {
+      const b = e.target.closest('.opt');
+      if (!b) return;
+      const box = b.closest('.q');
+      const i = +box.dataset.q;
+      if (done[i]) return;
+      if (+b.dataset.o === qs[i].answer) {
+        b.classList.add('right');
+        done[i] = true;
+        $$('.opt', box).forEach((x) => (x.disabled = true));
+        $('.why', box).classList.add('show');
+      } else {
+        b.classList.add('wrong');
+        b.disabled = true;
+        box.classList.add('shake');
+        setTimeout(() => box.classList.remove('shake'), 400);
+      }
+      score();
+      if (done.every(Boolean)) {
+        confetti();
+        $('#win').innerHTML = passBox(D.pass, D.pass_note || '把它填進下一格程式碼！');
+      }
+      fit();
+    });
+    score();
+  })();
+</script>

@@ -1,0 +1,107 @@
+<style>
+  .readout { font-family: var(--mono); font-size: 44px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .formula { font-family: var(--mono); font-size: 13px; color: var(--muted); margin-top: 4px; word-break: break-all; }
+  .bridge { position: relative; height: 150px; margin-top: 12px; border-radius: 12px; overflow: hidden;
+    background: linear-gradient(180deg, #1a2150 0%, #2a2f6b 70%, #151a36 70%, #0d1126 100%); border: 2px solid var(--line); }
+  .cliff { position: absolute; bottom: 0; width: 22%; height: 46%; background: #3a2f63; border-top: 4px solid #5a4b93; }
+  .cliff.l { left: 0; } .cliff.r { right: 0; }
+  .plank { position: absolute; left: 20%; right: 20%; bottom: 44%; height: 8px; background: repeating-linear-gradient(90deg, #c98d4b 0 14px, #8a5a2b 14px 16px);
+    border-radius: 2px; transition: transform 0.4s, background 0.3s; transform-origin: left center; }
+  .plank.broken { transform: rotate(9deg) translateY(10px); filter: saturate(0.5) brightness(0.7); }
+  .sign { position: absolute; left: 23%; bottom: 58%; background: var(--gold); color: var(--bg); font-weight: 800; font-size: 12px; padding: 2px 8px; border-radius: 4px; }
+  .walker { position: absolute; bottom: 48%; left: 4%; transition: left 0.9s cubic-bezier(.4,0,.2,1), transform 0.5s, bottom 0.6s; transform-origin: bottom center; }
+  .boss { position: absolute; right: 3%; bottom: 46%; }
+  .verdict { position: absolute; left: 0; right: 0; top: 8px; text-align: center; font-weight: 800; font-size: 15px; }
+  .devs { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; margin-top: 12px; }
+  .dev { border-radius: 10px; padding: 6px 10px; font-size: 13px; border: 2px solid var(--line); background: var(--panel2); display: flex; flex-direction: column; gap: 0; white-space: nowrap; }
+  .dev span:last-child { font-size: 12px; color: var(--muted); }
+  .dev.ok { border-color: var(--mint); } .dev.no { border-color: var(--red); opacity: 0.75; }
+  .bitrow { display: flex; align-items: baseline; gap: 10px; }
+  .bitrow .big { font-family: var(--mono); font-size: 30px; font-weight: 800; color: var(--gold); min-width: 2.2em; text-align: right; }
+</style>
+<div class="wrap">
+  <h2><span class="tag">第 1 章</span>記憶體峽谷的磅秤</h2>
+  <p class="sub">選一個模型、調整「每個權重用幾個 bit」，看看它有多重、過不過得了橋。</p>
+  <div class="row">
+    <div class="panel grow" style="flex-basis:300px">
+      <div class="muted" style="font-size:13px;margin-bottom:6px">① 選模型（參數數量）</div>
+      <div class="chips" id="models"></div>
+      <div class="muted" style="font-size:13px;margin:14px 0 2px">② 每個權重用幾個 bit？</div>
+      <div class="bitrow"><span class="big" id="bitsv">16</span><span class="muted" id="bitsname">float16（半精度浮點數）</span></div>
+      <input type="range" id="bits" min="1" max="32" step="1" value="16" aria-label="每個權重的位元數">
+      <div class="chips" id="presets"></div>
+    </div>
+    <div class="panel grow" style="flex-basis:340px">
+      <div class="muted" style="font-size:13px">模型大小</div>
+      <div class="readout" id="size">—</div>
+      <div class="formula" id="formula"></div>
+      <div class="bridge">
+        <div class="verdict" id="verdict"></div>
+        <div class="cliff l"></div><div class="cliff r"></div>
+        <div class="plank" id="plank"></div>
+        <div class="sign" id="sign"></div>
+        <div class="walker" id="walker"></div>
+        <div class="boss" id="boss"></div>
+      </div>
+    </div>
+  </div>
+  <div class="devs" id="devs"></div>
+  <div class="quest">🎯 <b>任務 1-2：</b>小史莫有 <span class="mono" id="np"></span> 個參數。每個權重<b>最多</b>可以用幾個 bit（整數），
+    才能通過限重 <span id="lim"></span> MB 的橋？用上面的滑桿找出答案，填進下一格程式碼。</div>
+</div>
+<script>
+  (function () {
+    const D = window.DATA;
+    const SMOL = D.params || 134515008;
+    const LIMIT = (D.limit_mb || 100) * 1e6;
+    const MODELS = [
+      { n: '小史莫 135M', p: SMOL },
+      { n: '0.5B 小模型', p: 494e6 },
+      { n: '3B 模型', p: 3.2e9 },
+      { n: '8B 模型', p: 8.0e9 },
+      { n: '70B 巨獸', p: 70.6e9 },
+    ];
+    const PRESETS = [[32, 'F32'], [16, 'F16'], [8, '8-bit'], [4, '4-bit'], [2, '2-bit']];
+    const NAMES = { 32: 'float32（單精度浮點數，訓練時最常用）', 16: 'float16（半精度浮點數）', 8: '8-bit 整數（256 個等級）',
+      4: '4-bit 整數（只有 16 個等級！）', 2: '2-bit（只有 4 個等級）', 1: '1-bit（只剩正或負）' };
+    const DEVS = [['🌉 魔王的橋', LIMIT], ['🍓 樹莓派 2 GB', 2e9], ['📱 手機 8 GB', 8e9], ['💻 筆電 16 GB', 16e9], ['🎮 顯卡 24 GB', 24e9]];
+    let model = 0;
+    $('#np').textContent = SMOL.toLocaleString('en-US');
+    $('#lim').textContent = (LIMIT / 1e6).toFixed(0);
+    $('#sign').textContent = '限重 ' + (LIMIT / 1e6).toFixed(0) + ' MB';
+    $('#boss').innerHTML = sprite('oom', 4);
+    $('#walker').innerHTML = sprite('smol', 3);
+    $('#models').innerHTML = MODELS.map((m, i) => `<button class="ghost" data-i="${i}">${m.n}</button>`).join('');
+    $('#presets').innerHTML = PRESETS.map(([b, n]) => `<button class="ghost" data-b="${b}">${n}</button>`).join('');
+
+    function update() {
+      const bits = +$('#bits').value;
+      const p = MODELS[model].p;
+      const bytes = (p * bits) / 8;
+      $('#bitsv').textContent = bits;
+      $('#bitsname').textContent = NAMES[bits] || `${bits}-bit（${Math.pow(2, bits).toLocaleString('en-US')} 個等級）`;
+      $('#size').textContent = fmtBytes(bytes);
+      $('#formula').textContent = `${p.toLocaleString('en-US')} 個參數 × ${bits} bit ÷ 8 = ${Math.round(bytes).toLocaleString('en-US')} bytes`;
+      $$('#models button').forEach((b) => b.classList.toggle('on', +b.dataset.i === model));
+      $$('#presets button').forEach((b) => b.classList.toggle('on', +b.dataset.b === bits));
+      const ok = bytes <= LIMIT;
+      const scale = clamp(0.7 + 0.28 * Math.log10(bytes / 3e7), 0.6, 2.4);
+      const w = $('#walker');
+      w.style.transform = `scale(${scale.toFixed(2)})`;
+      w.style.left = ok ? '70%' : '24%';
+      w.style.bottom = ok ? '48%' : '30%';
+      $('#plank').classList.toggle('broken', !ok);
+      $('#verdict').innerHTML = ok
+        ? '<span class="mint">✅ 輕輕鬆鬆過橋！魔王氣得跳腳。</span>'
+        : '<span class="red">❌ 太重了！OOM 魔王：「Killed.」</span>';
+      $('#devs').innerHTML = DEVS.map(([n, cap]) => {
+        const fit = bytes <= cap;
+        return `<div class="dev ${fit ? 'ok' : 'no'}"><span>${n}</span><span>${fit ? '✅ 裝得下' : '❌ 塞不進'}</span></div>`;
+      }).join('');
+    }
+    $('#bits').addEventListener('input', update);
+    $('#models').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { model = +b.dataset.i; update(); } });
+    $('#presets').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { $('#bits').value = b.dataset.b; update(); } });
+    update();
+  })();
+</script>

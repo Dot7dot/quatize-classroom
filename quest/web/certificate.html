@@ -1,0 +1,70 @@
+<style>
+  .cert { position: relative; background: #fffaf0; color: #2b2440; border-radius: 16px; padding: 30px 34px 26px; border: 6px double #b98a1f;
+    box-shadow: 0 0 0 4px #ffd166 inset; text-align: center; overflow: hidden; }
+  .cert .corner { position: absolute; width: 60px; height: 60px; border: 5px solid #ffd166; }
+  .cert .corner.a { left: 12px; top: 12px; border-right: 0; border-bottom: 0; }
+  .cert .corner.b { right: 12px; top: 12px; border-left: 0; border-bottom: 0; }
+  .cert .corner.c { left: 12px; bottom: 12px; border-right: 0; border-top: 0; }
+  .cert .corner.d { right: 12px; bottom: 12px; border-left: 0; border-top: 0; }
+  .cert h1 { margin: 6px 0 0; font-size: 30px; letter-spacing: 0.3em; color: #7a4b00; }
+  .cert .school { letter-spacing: 0.3em; font-size: 13px; color: #9a7b3a; font-weight: 800; }
+  .cert .name { font-size: 34px; font-weight: 800; margin: 14px 0 4px; border-bottom: 3px solid #b98a1f; display: inline-block; padding: 0 26px 4px; }
+  .cert .lead { font-size: 15px; line-height: 1.9; max-width: 640px; margin: 8px auto 0; }
+  .cert .lead b { color: #a2410f; }
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 18px auto 6px; max-width: 700px; }
+  .fact { background: #fff; border: 2px solid #ecd9a8; border-radius: 10px; padding: 8px 6px; }
+  .fact .k { font-size: 12px; color: #9a7b3a; }
+  .fact .v { font-family: var(--mono); font-weight: 800; font-size: 17px; color: #2b2440; white-space: nowrap; }
+  .badges { font-size: 26px; letter-spacing: 6px; margin-top: 10px; }
+  .badges .off { filter: grayscale(1); opacity: 0.2; }
+  .sig { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 16px; gap: 12px; flex-wrap: wrap; }
+  .sig .who { text-align: center; font-size: 12.5px; color: #6b5a3a; }
+  .sig .who .ln { border-top: 2px solid #6b5a3a; margin-top: 4px; padding-top: 3px; min-width: 150px; }
+  .code { font-family: var(--mono); font-size: 12px; color: #9a7b3a; background: transparent; border: 0; }
+  .incomplete { background: #fff1d6; border: 2px dashed #d89b2b; border-radius: 10px; padding: 8px 12px; margin-top: 12px; font-size: 13.5px; color: #7a4b00; }
+  @media print { body { background: #fff; } .noprint { display: none; } .wrap { padding: 0; } }
+</style>
+<div class="wrap">
+  <div class="cert" id="cert">
+    <i class="corner a"></i><i class="corner b"></i><i class="corner c"></i><i class="corner d"></i>
+    <div class="school">QUANTIZE ACADEMY · 量化學院</div>
+    <h1 id="h1">畢業證書</h1>
+    <div style="font-size:14px;margin-top:10px">茲證明</div>
+    <div class="name" id="name"></div>
+    <div class="lead" id="lead"></div>
+    <div class="facts" id="facts"></div>
+    <div class="badges" id="badges"></div>
+    <div id="inc"></div>
+    <div class="sig">
+      <div class="who"><div id="s1"></div><div class="ln">院長　咕咕夫教授</div></div>
+      <div class="who"><div class="code" id="code"></div><div id="date" style="margin-top:2px"></div></div>
+      <div class="who"><div id="s2"></div><div class="ln">見證人　小史莫</div></div>
+    </div>
+  </div>
+  <div class="noprint" style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+    <button id="print">🖨️ 列印／存成 PDF</button>
+    <button class="ghost" id="party">🎉 再放一次彩帶</button>
+  </div>
+</div>
+<script>
+  (function () {
+    const D = window.DATA;
+    $('#name').textContent = D.name || '無名見習生';
+    $('#h1').textContent = D.complete ? '畢業證書' : '修業證明';
+    $('#lead').innerHTML = D.complete
+      ? `已完成「量化教室」全部課程，親手將語言模型 <b>${D.model}</b> 轉換為 GGUF 格式並以 <b>Q4_0</b> 量化，<br>成功擊敗 OOM 魔王，特授予 <b>Lv.${D.level}「${D.title}」</b>稱號。`
+      : `正在修習「量化教室」課程，目前為 <b>Lv.${D.level}「${D.title}」</b>，已完成 ${D.done} / ${D.total_tasks} 個任務。`;
+    $('#facts').innerHTML = (D.facts || []).map((f) => `<div class="fact"><div class="k">${f[0]}</div><div class="v">${f[1]}</div></div>`).join('');
+    $('#badges').innerHTML = (D.badges || []).map((b) => `<span class="${b.on ? '' : 'off'}" title="${b.name}">${b.icon}</span>`).join('');
+    if (!D.complete) $('#inc').innerHTML = `<div class="incomplete">還有任務沒完成：${(D.missing || []).join('、')}。全部完成後再執行一次這一格，就能換成正式的畢業證書！</div>`;
+    $('#s1').innerHTML = sprite('gguf', 3);
+    $('#s2').innerHTML = sprite('smol', 3);
+    $('#s1').firstChild.style.margin = '0 auto';
+    $('#s2').firstChild.style.margin = '0 auto';
+    $('#code').textContent = '驗證碼 ' + D.code;
+    $('#date').textContent = D.date;
+    $('#print').addEventListener('click', () => window.print());
+    $('#party').addEventListener('click', () => confetti(2600));
+    if (D.complete) confetti(2600);
+  })();
+</script>

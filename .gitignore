@@ -1,0 +1,10 @@
+# 學生執行時產生的檔案
+workspace/
+quest_save.json
+
+# Python / Jupyter
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/

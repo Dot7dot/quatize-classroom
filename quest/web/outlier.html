@@ -1,0 +1,108 @@
+<style>
+  svg.chart { width: 100%; height: auto; display: block; background: #0f1430; border-radius: 12px; border: 2px solid var(--line); }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; margin: 8px 0 0; color: var(--muted); }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  .say { font-size: 14px; margin-top: 10px; min-height: 46px; }
+</style>
+<div class="wrap">
+  <h2><span class="tag">第 3 章</span>老鼠屎實驗室</h2>
+  <p class="sub">64 個權重裡混進一顆「老鼠屎」（特別大的離群值）。把它越拉越大，看看其他權重會發生什麼事。</p>
+  <svg class="chart" id="svg" viewBox="0 0 820 290" role="img" aria-label="權重長條圖"></svg>
+  <div class="legend">
+    <span><i style="background:#74b9ff"></i>原本的權重</span>
+    <span><i style="background:#5ee6c0"></i>量化後還原的值</span>
+    <span><i style="background:#ff6b6b"></i>被壓成 0 的權重</span>
+    <span><i style="background:#ffd166"></i>老鼠屎</span>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <div class="panel grow">
+      <div class="muted" style="font-size:13px">🐭 老鼠屎的大小：<b class="gold mono" id="magv">0.25</b></div>
+      <input type="range" id="mag" min="0.25" max="3" step="0.05" value="0.25" aria-label="離群值大小">
+      <div class="muted" style="font-size:13px;margin:8px 0 6px">✂️ 怎麼分塊（每塊各自算自己的 scale）</div>
+      <div class="chips" id="modes">
+        <button class="ghost on" data-b="64">整包一塊（64）</button>
+        <button class="ghost" data-b="32">每 32 個一塊</button>
+        <button class="ghost" data-b="8">每 8 個一塊</button>
+      </div>
+    </div>
+    <div class="panel grow">
+      <div class="stats">
+        <div class="stat"><span class="k">平均誤差</span><span class="v pink" id="err">—</span></div>
+        <div class="stat"><span class="k">被壓成 0 的權重</span><span class="v red" id="zeros">—</span></div>
+        <div class="stat"><span class="k">每個權重平均花費</span><span class="v gold" id="bpw">—</span></div>
+      </div>
+      <div class="say" id="say"></div>
+    </div>
+  </div>
+  <div class="quest">🎯 <b>任務 3-2：</b>分塊越細越準，但每一塊都要多存一個 16-bit 的 scale。觀察上面「每個權重平均花費」的規律 ——
+    如果<b>每 16 個一塊</b>，每個權重平均要花幾個 bit？把答案填進下一格程式碼。</div>
+</div>
+<script>
+  (function () {
+    const N = 64, OUT = 45;
+    const W = 820, H = 290, PADL = 14, PADR = 14, TOP = 44, BOT = 250, MID = (TOP + BOT) / 2;
+    const YMAX = 0.42;
+    const rand = mulberry32(2024);
+    const base = Array.from({ length: N }, () => clamp(gauss(rand) * 0.13, -0.36, 0.36));
+    let block = 64;
+    const Y = (v) => MID - (clamp(v, -YMAX, YMAX) / YMAX) * ((BOT - TOP) / 2);
+    function draw() {
+      const mag = +$('#mag').value;
+      const xs = base.slice();
+      xs[OUT] = mag;
+      const rec = new Array(N), scales = [];
+      for (let s = 0; s < N; s += block) {
+        let mx = 0;
+        for (let i = s; i < s + block; i++) mx = Math.max(mx, Math.abs(xs[i]));
+        const scale = mx / 7;
+        scales.push(scale);
+        for (let i = s; i < s + block; i++) rec[i] = clamp(Math.round(xs[i] / scale), -8, 7) * scale;
+      }
+      let sum = 0, zeros = 0;
+      for (let i = 0; i < N; i++) {
+        sum += Math.abs(rec[i] - xs[i]);
+        if (rec[i] === 0 && Math.abs(xs[i]) > 0.02) zeros++;
+      }
+      const bw = (W - PADL - PADR) / N;
+      let s = '', outLabel = null;
+      for (let b = 0; b < N / block; b++) {
+        const x0 = PADL + b * block * bw;
+        s += `<rect x="${x0}" y="${TOP - 26}" width="${block * bw}" height="${BOT - TOP + 34}" fill="${b % 2 ? '#161c3d' : '#1b2249'}"/>`;
+        if (block >= 8) {
+          const label = block >= 32 ? `scale = ${fmt(scales[b], 4)}` : fmt(scales[b], 3);
+          s += `<text x="${x0 + (block * bw) / 2}" y="${TOP - 10}" text-anchor="middle" font-size="${block >= 32 ? 12 : 9.5}" fill="#a3abd6" font-family="monospace">${label}</text>`;
+        }
+      }
+      s += `<line x1="${PADL}" y1="${MID}" x2="${W - PADR}" y2="${MID}" stroke="#36407a" stroke-width="1"/>`;
+      for (let i = 0; i < N; i++) {
+        const x = PADL + i * bw;
+        const isOut = i === OUT;
+        const crushed = rec[i] === 0 && Math.abs(xs[i]) > 0.02;
+        const y1 = Y(xs[i]), y2 = Y(rec[i]);
+        s += `<rect x="${x + 1.5}" y="${Math.min(MID, y1)}" width="${bw * 0.38}" height="${Math.max(1, Math.abs(y1 - MID))}" fill="${isOut ? '#ffd166' : '#74b9ff'}"/>`;
+        s += `<rect x="${x + 1.5 + bw * 0.44}" y="${Math.min(MID, y2)}" width="${bw * 0.38}" height="${Math.max(crushed ? 3 : 1, Math.abs(y2 - MID))}" fill="${crushed ? '#ff6b6b' : '#5ee6c0'}"/>`;
+        if (isOut && mag > YMAX) outLabel = x + bw / 2;
+      }
+      if (outLabel !== null) {
+        s += `<rect x="${outLabel - 30}" y="${TOP + 2}" width="60" height="20" rx="6" fill="#12172b" stroke="#ffd166" stroke-width="1.5"/>`;
+        s += `<text x="${outLabel}" y="${TOP + 16}" text-anchor="middle" font-size="12" fill="#ffd166" font-family="monospace" font-weight="700">▲ ${fmt(mag, 2)}</text>`;
+      }
+      s += `<text x="${PADL + 4}" y="${BOT + 28}" font-size="11" fill="#a3abd6">權重 #0</text><text x="${W - PADR - 4}" y="${BOT + 28}" text-anchor="end" font-size="11" fill="#a3abd6">#63</text>`;
+      $('#svg').innerHTML = s;
+      $('#magv').textContent = fmt(mag, 2);
+      $('#err').textContent = fmt(sum / N, 4);
+      $('#zeros').textContent = zeros + ' / ' + N;
+      $('#bpw').textContent = fmt(4 + 16 / block, 2) + ' bit';
+      $$('#modes button').forEach((b) => b.classList.toggle('on', +b.dataset.b === block));
+      let say;
+      if (mag < 0.5) say = '🦙 現在還沒有老鼠屎，大家的大小差不多，16 個格子分配得很均勻。把滑桿往右拉拉看！';
+      else if (block === 64) say = `🦙 糟糕！為了容納那顆 ${fmt(mag, 2)}，整包的 scale 被撐大，格子變得超粗 —— <b class="red">${zeros} 個權重直接被四捨五入成 0</b>。這就是「一顆老鼠屎壞了一鍋粥」。`;
+      else if (block === 32) say = `🦙 分成兩塊之後，只有老鼠屎所在的右半邊受害，左半邊完全不受影響！代價是每塊多存一個 scale（多 0.5 bit）。`;
+      else say = `🦙 切到 8 個一塊，受害範圍更小了。但每個權重要花 6 bit —— 省空間的效果被 scale 吃掉一大截。魚與熊掌啊。`;
+      $('#say').innerHTML = say;
+    }
+    $('#mag').addEventListener('input', draw);
+    $('#modes').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { block = +b.dataset.b; draw(); } });
+    draw();
+  })();
+</script>

@@ -1,0 +1,121 @@
+<style>
+  svg.bars { width: 100%; height: auto; display: block; background: #0f1430; border-radius: 12px; border: 2px solid var(--line); }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; margin-top: 12px; }
+  .step .n { color: var(--gold); font-weight: 800; }
+  .step .big { font-family: var(--mono); font-size: 17px; font-weight: 800; margin-top: 4px; word-break: break-all; }
+  .grid { display: grid; grid-template-columns: 84px repeat(16, minmax(0, 1fr)); gap: 3px; margin-top: 8px; align-items: center; }
+  .grid .lab { font-size: 12px; color: var(--muted); line-height: 1.25; }
+  .cell { font-family: var(--mono); font-weight: 800; text-align: center; border-radius: 5px; padding: 3px 0; font-size: 14px; cursor: pointer; border: 2px solid transparent; color: var(--bg); }
+  .cell.lo { background: #74b9ff; } .cell.hi { background: #b794ff; }
+  .cell.byte { background: var(--panel2); color: var(--ink); border-color: var(--line); font-size: 13px; }
+  .cell.sel { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); }
+  .cell.byte.sel { background: var(--gold); color: var(--bg); }
+  .final { font-family: var(--mono); font-size: 15px; font-weight: 800; letter-spacing: 0.04em; margin-top: 6px; word-break: break-all; line-height: 1.9; }
+  .final .dd { background: var(--gold); color: var(--bg); border-radius: 4px; padding: 1px 4px; margin-right: 2px; }
+  .final .bb { border-radius: 4px; padding: 1px 3px; }
+  .final .bb.sel { background: var(--gold); color: var(--bg); }
+  .info { margin-top: 12px; font-size: 14px; min-height: 76px; }
+  .info .mono { color: var(--gold); }
+</style>
+<div class="wrap">
+  <h2><span class="tag">第 4 章</span>Q4_0 解剖台</h2>
+  <p class="sub">一個 block 有 32 個權重。把滑鼠移到任何一根長條（或下面的代碼）上，看它怎麼變成半個 byte。</p>
+  <svg class="bars" id="svg" viewBox="0 0 820 196" role="img" aria-label="32 個權重"></svg>
+  <div class="chips" style="margin-top:10px">
+    <button class="ghost" id="reroll">🎲 換一個 block</button>
+    <button class="ghost" id="flip">± 把最大的那個變號</button>
+    <button class="ghost" id="rat">🐭 放一顆老鼠屎</button>
+  </div>
+  <div class="steps">
+    <div class="panel step"><span class="n">① 找出絕對值最大的權重 m</span><div class="big" id="s1"></div>
+      <div class="muted" style="font-size:13px">保留它的正負號！</div></div>
+    <div class="panel step"><span class="n">② 算出 scale：d = m ÷ (−8)</span><div class="big" id="s2"></div>
+      <div class="muted" style="font-size:13px" id="s2b"></div></div>
+  </div>
+  <div class="panel" style="margin-top:12px">
+    <span class="gold" style="font-weight:800">③ 每個權重變成 0~F 的代碼　④ 兩個代碼擠成 1 個 byte</span>
+    <div class="grid" id="grid"></div>
+    <div class="muted" style="font-size:13px;margin-top:8px">byte 的十六進位寫法剛好就是「<span style="color:#b794ff">後半的代碼</span>」接「<span style="color:#74b9ff">前半的代碼</span>」。</div>
+  </div>
+  <div class="panel" style="margin-top:12px">
+    <span class="gold" style="font-weight:800">⑤ 成品：18 個 bytes</span>
+    <span class="muted" style="font-size:13px">（<span class="gold">2 bytes 的 d</span> + 16 bytes 的代碼 = 32 個權重）</span>
+    <div class="final" id="final"></div>
+  </div>
+  <div class="panel info" id="info"></div>
+</div>
+<script>
+  (function () {
+    let seed = 5, ws = [], sel = 0, rat = false;
+    function reroll() {
+      const rand = mulberry32(seed++);
+      ws = Array.from({ length: 32 }, () => Math.fround(gauss(rand) * 0.05));
+      if (rat) ws[20] = Math.fround(0.62);
+    }
+    function draw() {
+      const q = q4encode(ws);
+      const mi = ws.indexOf(q.m);
+      const mx = Math.abs(q.m) || 1;
+      const W = 820, PAD = 12, MID = 112, HALF = 66, bw = (W - 2 * PAD) / 32;
+      let s = `<rect x="${PAD}" y="14" width="${bw * 16}" height="180" fill="#16203f"/><rect x="${PAD + bw * 16}" y="14" width="${bw * 16}" height="180" fill="#1d1a44"/>`;
+      s += `<text x="${PAD + 6}" y="28" font-size="11" fill="#74b9ff">前 16 個（#0 ~ #15）</text><text x="${PAD + bw * 16 + 6}" y="28" font-size="11" fill="#b794ff">後 16 個（#16 ~ #31）</text>`;
+      s += `<line x1="${PAD}" y1="${MID}" x2="${W - PAD}" y2="${MID}" stroke="#36407a"/>`;
+      ws.forEach((v, i) => {
+        const h = (Math.abs(v) / mx) * HALF;
+        const rec = (q.codes[i] - 8) * q.d16;
+        const yr = MID - (rec / mx) * HALF;
+        const fill = i === mi ? '#ffd166' : i < 16 ? '#74b9ff' : '#b794ff';
+        s += `<rect data-i="${i}" x="${PAD + i * bw + 3}" y="${v >= 0 ? MID - h : MID}" width="${bw - 6}" height="${Math.max(1, h)}" fill="${fill}" opacity="${i === sel ? 1 : 0.8}" stroke="${i === sel ? '#fff' : 'none'}" stroke-width="2"/>`;
+        s += `<line x1="${PAD + i * bw + 1}" y1="${yr}" x2="${PAD + (i + 1) * bw - 1}" y2="${yr}" stroke="#5ee6c0" stroke-width="2.5"/>`;
+        s += `<rect data-i="${i}" x="${PAD + i * bw}" y="14" width="${bw}" height="180" fill="transparent"/>`;
+      });
+      s += `<text x="${W - PAD - 6}" y="188" text-anchor="end" font-size="11" fill="#5ee6c0">━ 綠線：量化後還原的值</text>`;
+      $('#svg').innerHTML = s;
+
+      $('#s1').innerHTML = `m = w[${mi}] = <span class="gold">${fmt(q.m, 5)}</span>`;
+      $('#s2').innerHTML = `d = <span class="gold">${fmt(q.d, 6)}</span>`;
+      $('#s2b').innerHTML = `存成 float16：<span class="mono gold">${hex2(q.bytes[0])} ${hex2(q.bytes[1])}</span>`
+        + (q.d < 0 ? '　<span class="pink">d 是負的！因為 m 是正的。</span>' : '');
+
+      let g = '<div class="lab">前 16 個<br>（低 4 bit）</div>';
+      for (let j = 0; j < 16; j++) g += `<div class="cell lo${sel === j ? ' sel' : ''}" data-i="${j}">${q.codes[j].toString(16).toUpperCase()}</div>`;
+      g += '<div class="lab">後 16 個<br>（高 4 bit）</div>';
+      for (let j = 0; j < 16; j++) g += `<div class="cell hi${sel === j + 16 ? ' sel' : ''}" data-i="${j + 16}">${q.codes[j + 16].toString(16).toUpperCase()}</div>`;
+      g += '<div class="lab">擠成 byte</div>';
+      for (let j = 0; j < 16; j++) g += `<div class="cell byte${sel % 16 === j ? ' sel' : ''}" data-i="${sel < 16 ? j : j + 16}">${hex2(q.bytes[j + 2])}</div>`;
+      $('#grid').innerHTML = g;
+
+      $('#final').innerHTML = `<span class="dd">${hex2(q.bytes[0])}</span><span class="dd">${hex2(q.bytes[1])}</span> `
+        + q.bytes.slice(2).map((b, j) => `<span class="bb${sel % 16 === j ? ' sel' : ''}">${hex2(b)}</span>`).join(' ');
+
+      const x = ws[sel], c = q.codes[sel];
+      const raw = q.d === 0 ? 8.5 : x / q.d + 8.5;
+      const rec = (c - 8) * q.d16;
+      const clipped = raw >= 16 || raw < 0;
+      $('#info').innerHTML =
+        `<b>權重 #${sel}</b>　x = <span class="mono">${fmt(x, 5)}</span><br>`
+        + `x ÷ d + 8.5 = <span class="mono">${fmt(raw, 3)}</span>　→　去掉小數${clipped ? '、再夾進 0~15' : ''} = <span class="mono">${c}</span>`
+        + `　→　代碼 <span class="mono">${c.toString(16).toUpperCase()}</span>，放在第 <span class="mono">${sel % 16}</span> 個 byte 的${sel < 16 ? '低' : '高'} 4 bit<br>`
+        + `還原：(${c} − 8) × d = <span class="mono">${fmt(rec, 5)}</span>　誤差 <span class="mono">${fmt(Math.abs(rec - x), 5)}</span>`
+        + (sel === mi ? '　<span class="gold">★ 它就是 m，一定剛好落在代碼 0（也就是 −8 那格），誤差幾乎是 0！</span>' : '');
+      $('#rat').classList.toggle('on', rat);
+    }
+    function pick(e) {
+      const t = e.target.closest('[data-i]');
+      if (t && +t.dataset.i !== sel) { sel = +t.dataset.i; draw(); }
+    }
+    ['mouseover', 'click'].forEach((ev) => { $('#svg').addEventListener(ev, pick); $('#grid').addEventListener(ev, pick); });
+    $('#reroll').addEventListener('click', () => { reroll(); draw(); });
+    $('#flip').addEventListener('click', () => {
+      const q = q4encode(ws);
+      const mi = ws.indexOf(q.m);
+      ws[mi] = -ws[mi];
+      sel = mi;
+      draw();
+    });
+    $('#rat').addEventListener('click', () => { rat = !rat; seed--; reroll(); draw(); });
+    reroll();
+    sel = ws.indexOf(q4encode(ws).m);
+    draw();
+  })();
+</script>

@@ -1,0 +1,91 @@
+<style>
+  svg.line { width: 100%; height: auto; display: block; background: #0f1430; border-radius: 12px; border: 2px solid var(--line); }
+  .tip { font-size: 14px; margin-top: 8px; min-height: 24px; }
+  .bitrow { display: flex; align-items: baseline; gap: 10px; }
+  .bitrow .big { font-family: var(--mono); font-size: 34px; font-weight: 800; color: var(--gold); }
+</style>
+<div class="wrap">
+  <h2><span class="tag">第 2 章</span>甜度量化機</h2>
+  <p class="sub">上排是原本的權重（任意小數），下排是量化後的樣子：每個點都被「吸」到最近的格子上。</p>
+  <svg class="line" id="svg" viewBox="0 0 820 262" role="img" aria-label="量化數線"></svg>
+  <div class="row" style="margin-top:14px">
+    <div class="panel grow">
+      <div class="bitrow"><span class="big" id="bitsv">3</span><span>bit　→　<b class="gold" id="levels">8</b> 個格子</span></div>
+      <input type="range" id="bits" min="2" max="8" step="1" value="3" aria-label="位元數">
+      <div class="tip" id="tip"></div>
+      <div style="margin-top:8px"><button class="ghost" id="reroll">🎲 換一批權重</button></div>
+    </div>
+    <div class="panel grow">
+      <div class="stats">
+        <div class="stat"><span class="k">格距（scale）</span><span class="v sky" id="scale">—</span></div>
+        <div class="stat"><span class="k">最大可能誤差（半格）</span><span class="v pink" id="maxerr">—</span></div>
+        <div class="stat"><span class="k">這批權重的平均誤差</span><span class="v mint" id="avgerr">—</span></div>
+      </div>
+      <div class="muted" style="font-size:13px;margin-top:10px">誤差 ＝｜量化後的值 − 原本的值｜。每多 1 個 bit，格子數變 2 倍，誤差大約剩一半。</div>
+    </div>
+  </div>
+  <div class="quest">🎯 <b>任務 2-2：</b>最少需要幾個 bit，才能讓「最大可能誤差」小於 <span class="mono">0.05</span>？拉滑桿找答案，填進下一格程式碼。</div>
+</div>
+<script>
+  (function () {
+    const W = 820, PAD = 50;
+    const LO = -1.25, HI = 1.25;
+    const X = (v) => PAD + ((v - LO) / (HI - LO)) * (W - 2 * PAD);
+    const TIPS = {
+      2: '只有 4 格 —— 就像飲料店只給你「無糖／微糖／半糖／全糖」四種選擇。',
+      3: '8 格。點點被拉得很遠，誤差用眼睛就看得出來。',
+      4: '16 格 —— 這就是 4-bit！今天的主角 Q4_0 用的就是這個解析度。',
+      5: '32 格。開始有點精緻了。',
+      6: '64 格。格子密到快看不清楚。',
+      7: '128 格。點幾乎沒有移動。',
+      8: '256 格（8-bit）。肉眼已經分不出量化前後的差別。',
+    };
+    let seed = 11, pts = [];
+    function reroll() {
+      const rand = mulberry32(seed++);
+      pts = Array.from({ length: 22 }, () => clamp(gauss(rand) * 0.42, -1, 1));
+      pts[0] = 1; pts[1] = -1;
+    }
+    function draw() {
+      const bits = +$('#bits').value;
+      const half = Math.pow(2, bits - 1);
+      const scale = 1 / (half - 1);
+      let s = '';
+      // 格子
+      for (let c = -half; c <= half - 1; c++) {
+        const x = X(c * scale);
+        const unused = c === -half;
+        const strong = bits <= 5;
+        s += `<line x1="${x}" y1="52" x2="${x}" y2="208" stroke="${unused ? '#ff6b6b' : '#36407a'}" stroke-width="${strong ? 1.5 : 0.6}" ${unused ? 'stroke-dasharray="4 4"' : ''}/>`;
+        if (bits <= 4) s += `<text x="${x}" y="228" text-anchor="middle" font-size="12" fill="${unused ? '#ff6b6b' : '#a3abd6'}" font-family="monospace">${c}</text>`;
+      }
+      if (bits <= 4) s += `<text x="${W - 12}" y="228" text-anchor="end" font-size="11" fill="#a3abd6">← 整數代碼</text>`;
+      // 軸
+      s += `<line x1="${X(-1)}" y1="78" x2="${X(1)}" y2="78" stroke="#74b9ff" stroke-width="2"/>`;
+      s += `<line x1="${X(LO) + 6}" y1="182" x2="${X(HI) - 6}" y2="182" stroke="#5ee6c0" stroke-width="2"/>`;
+      s += `<text x="12" y="34" font-size="13" fill="#74b9ff" font-weight="700">原本的權重（-1 ~ +1 之間的任意小數）</text>`;
+      s += `<text x="12" y="252" font-size="13" fill="#5ee6c0" font-weight="700">量化後（只能站在格子上）</text>`;
+      for (const v of [-1, 0, 1]) s += `<text x="${X(v)}" y="68" text-anchor="middle" font-size="11" fill="#74b9ff" font-family="monospace">${v > 0 ? '+' : ''}${v}</text>`;
+      let sum = 0;
+      for (const v of pts) {
+        const q = clamp(Math.round(v / scale), -half, half - 1);
+        const r = q * scale;
+        sum += Math.abs(r - v);
+        s += `<line x1="${X(v)}" y1="78" x2="${X(r)}" y2="182" stroke="#ffd166" stroke-width="1" opacity="0.55"/>`;
+        s += `<circle cx="${X(v)}" cy="78" r="5" fill="#74b9ff" stroke="#12172b" stroke-width="1.5"/>`;
+        s += `<circle cx="${X(r)}" cy="182" r="5" fill="#5ee6c0" stroke="#12172b" stroke-width="1.5"/>`;
+      }
+      $('#svg').innerHTML = s;
+      $('#bitsv').textContent = bits;
+      $('#levels').textContent = Math.pow(2, bits);
+      $('#scale').textContent = fmt(scale, 4);
+      $('#maxerr').textContent = fmt(scale / 2, 4);
+      $('#avgerr').textContent = fmt(sum / pts.length, 4);
+      $('#tip').innerHTML = '🦙 ' + TIPS[bits] + (bits <= 4 ? ' <span class="red">紅色虛線</span>那格（最小的代碼）超出範圍、用不到，先記著，第 4 章會回來討債。' : '');
+    }
+    $('#bits').addEventListener('input', draw);
+    $('#reroll').addEventListener('click', () => { reroll(); draw(); });
+    reroll();
+    draw();
+  })();
+</script>

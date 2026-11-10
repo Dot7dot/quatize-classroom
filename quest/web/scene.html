@@ -1,0 +1,157 @@
+<style>
+  .stage {
+    position: relative;
+    border-radius: 14px;
+    border: 2px solid var(--line);
+    overflow: hidden;
+    background: linear-gradient(180deg, #1a2150 0%, #2a2f6b 55%, #3a2f63 100%);
+    min-height: 230px;
+  }
+  .stage.canyon { background: linear-gradient(180deg, #162447 0%, #2d3a78 50%, #5b3f6e 100%); }
+  .stage.boss { background: linear-gradient(180deg, #2a1136 0%, #4a1a4a 55%, #6b2242 100%); }
+  .stage.dawn { background: linear-gradient(180deg, #25346e 0%, #7b5ea7 55%, #ffb86b 100%); }
+  .stars { position: absolute; inset: 0; pointer-events: none; }
+  .stars i {
+    position: absolute; width: 3px; height: 3px; background: #fff; opacity: 0.7;
+    animation: tw 2.4s steps(2) infinite;
+  }
+  @keyframes tw { 50% { opacity: 0.15; } }
+  .cast { display: flex; align-items: flex-end; gap: 16px; padding: 18px 18px 0; min-height: 132px; }
+  .actor { opacity: 0.35; transform: scale(0.85); transform-origin: bottom center; transition: all 0.2s; filter: saturate(0.6); }
+  .actor.on { opacity: 1; transform: scale(1); filter: none; }
+  .dialog {
+    margin: 10px 14px 14px;
+    background: rgba(13, 17, 38, 0.92);
+    border: 2px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 14px 10px;
+    cursor: pointer;
+    min-height: 92px;
+    position: relative;
+  }
+  .who {
+    display: inline-block; font-weight: 800; font-size: 13px; color: var(--bg);
+    border-radius: 6px; padding: 1px 10px; margin-bottom: 6px;
+  }
+  .line { font-size: 16px; line-height: 1.75; min-height: 56px; white-space: pre-wrap; }
+  .line.narr { color: var(--muted); font-style: italic; }
+  .next { position: absolute; right: 12px; bottom: 6px; color: var(--gold); font-size: 13px; animation: bob 1s infinite; }
+  .bar { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .dots { flex: 1; display: flex; gap: 4px; flex-wrap: wrap; }
+  .dots i { width: 9px; height: 9px; border-radius: 2px; background: var(--panel2); border: 1px solid var(--line); }
+  .dots i.done { background: var(--gold); border-color: var(--gold); }
+  .log { margin-top: 12px; display: none; }
+  .log.show { display: block; }
+  .log p { margin: 0 0 8px; font-size: 14.5px; }
+  .log .n { font-weight: 800; }
+</style>
+<div class="wrap">
+  <h2><span class="tag" id="tag">劇情</span><span id="title"></span></h2>
+  <p class="sub">點對話框（或按空白鍵）看下一句。趕時間的話可以按「全部顯示」。</p>
+  <div class="stage" id="stage">
+    <div class="stars" id="stars"></div>
+    <div class="cast" id="cast"></div>
+    <div class="dialog" id="dialog" tabindex="0" role="button" aria-label="下一句">
+      <span class="who" id="who"></span>
+      <div class="line" id="line"></div>
+      <span class="next" id="next">▼</span>
+    </div>
+  </div>
+  <div class="bar">
+    <div class="dots" id="dots"></div>
+    <button class="ghost" id="replay">🔁 重播</button>
+    <button class="ghost" id="all">⏩ 全部顯示</button>
+    <button id="go">▶ 下一句</button>
+  </div>
+  <div class="log panel" id="log"></div>
+</div>
+<script>
+  (function () {
+    const D = window.DATA;
+    const lines = D.lines || [];
+    $('#title').textContent = D.title || '';
+    if (D.tag) $('#tag').textContent = D.tag;
+    if (D.bg) $('#stage').classList.add(D.bg);
+
+    const rand = mulberry32(7);
+    $('#stars').innerHTML = Array.from({ length: 26 }, () =>
+      `<i style="left:${(rand() * 100).toFixed(1)}%;top:${(rand() * 60).toFixed(1)}%;animation-delay:${(rand() * 2).toFixed(2)}s"></i>`).join('');
+
+    const cast = [];
+    for (const l of lines) if (SPRITES[l.who] && !cast.includes(l.who)) cast.push(l.who);
+    $('#cast').innerHTML = cast.map((w) => `<div class="actor" data-who="${w}">${sprite(w, 6)}</div>`).join('');
+    $('#dots').innerHTML = lines.map(() => '<i></i>').join('');
+
+    let idx = -1, typing = null, shown = 0;
+    function render() {
+      const l = lines[idx];
+      const who = WHO[l.who] || WHO.narrator;
+      $('#who').textContent = who.name;
+      $('#who').style.background = who.color;
+      $('#line').className = 'line' + (l.who === 'narrator' ? ' narr' : '');
+      $$('.actor').forEach((a) => a.classList.toggle('on', a.dataset.who === l.who));
+      $$('#dots i').forEach((d, i) => d.classList.toggle('done', i <= idx));
+      $('#next').style.visibility = 'hidden';
+      shown = 0;
+      clearInterval(typing);
+      const chars = Array.from(l.text);
+      typing = setInterval(() => {
+        shown += 2;
+        $('#line').textContent = chars.slice(0, shown).join('');
+        if (shown >= chars.length) finishLine();
+      }, 22);
+    }
+    function finishLine() {
+      clearInterval(typing);
+      typing = null;
+      $('#line').textContent = lines[idx].text;
+      $('#next').style.visibility = 'visible';
+      if (idx === lines.length - 1) {
+        $('#next').textContent = '■';
+        $('#go').textContent = '✔ 劇情結束，往下執行下一格';
+        $('#go').disabled = true;
+      }
+      fit();
+    }
+    function advance() {
+      if (typing) return finishLine();
+      if (idx < lines.length - 1) { idx++; render(); }
+    }
+    function showAll() {
+      clearInterval(typing);
+      typing = null;
+      $('#log').innerHTML = lines.map((l) => {
+        const who = WHO[l.who] || WHO.narrator;
+        return l.who === 'narrator'
+          ? `<p class="muted"><i>${l.text}</i></p>`
+          : `<p><span class="n" style="color:${who.color}">${who.name}：</span>${l.text}</p>`;
+      }).join('');
+      $('#log').classList.add('show');
+      idx = lines.length - 1;
+      render();
+      finishLine();
+    }
+    $('#dialog').addEventListener('click', advance);
+    $('#go').addEventListener('click', advance);
+    $('#all').addEventListener('click', showAll);
+    $('#replay').addEventListener('click', () => {
+      idx = -1;
+      $('#log').classList.remove('show');
+      $('#go').disabled = false;
+      $('#go').textContent = '▶ 下一句';
+      $('#next').textContent = '▼';
+      advance();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === ' ' || e.key === 'Enter') {
+        if (e.target && e.target.tagName === 'BUTTON') return;
+        e.preventDefault();
+        advance();
+      }
+    });
+    if (lines.length) advance();
+  })();
+</script>
+<noscript>
+  <div class="wrap panel">（需要 JavaScript 才能播放劇情動畫。）</div>
+</noscript>

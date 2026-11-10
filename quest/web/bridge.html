@@ -1,0 +1,96 @@
+<style>
+  .canyon { position: relative; height: 250px; border-radius: 14px; overflow: hidden; border: 2px solid var(--line);
+    background: linear-gradient(180deg, #162447 0%, #2d3a78 52%, #5b3f6e 74%, #10142c 74%, #0a0d1f 100%); }
+  .cliff { position: absolute; bottom: 0; height: 40%; background: #3a2f63; border-top: 5px solid #6a59a8; }
+  .cliff.l { left: 0; width: 24%; } .cliff.r { right: 0; width: 24%; }
+  .plank { position: absolute; left: 23%; right: 23%; bottom: 38.5%; height: 9px; border-radius: 2px;
+    background: repeating-linear-gradient(90deg, #c98d4b 0 16px, #8a5a2b 16px 18px); transition: transform 0.5s; transform-origin: left center; }
+  .plank.broken { transform: rotate(12deg) translateY(14px); filter: brightness(0.6); }
+  .sign { position: absolute; left: 25%; bottom: 52%; background: var(--gold); color: var(--bg); font-weight: 800; font-size: 13px; padding: 3px 10px; border-radius: 5px; }
+  .village { position: absolute; right: 2%; bottom: 62%; font-size: 13px; font-weight: 800; color: var(--mint); text-align: right; }
+  .hero { position: absolute; left: 5%; bottom: 43%; transform-origin: bottom center; transition: left 1.6s cubic-bezier(.45,0,.25,1), transform 0.9s cubic-bezier(.2,1.5,.4,1), bottom 0.8s; }
+  .villain { position: absolute; right: 26%; bottom: 43%; transition: right 0.6s, transform 0.3s; }
+  .caption { position: absolute; left: 0; right: 0; top: 12px; text-align: center; font-size: 17px; font-weight: 800; }
+  .gauge { height: 26px; border-radius: 999px; background: var(--bg); border: 2px solid var(--line); position: relative; overflow: hidden; margin-top: 6px; }
+  .gauge .fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--mint), var(--gold)); transition: width 1.1s cubic-bezier(.3,0,.2,1), background 0.3s; }
+  .gauge .lim { position: absolute; top: -2px; bottom: -2px; width: 3px; background: var(--red); }
+  .gauge .limt { position: absolute; top: 3px; font-size: 12px; font-weight: 800; color: var(--red); transform: translateX(8px); white-space: nowrap; }
+</style>
+<div class="wrap">
+  <h2><span class="tag">第 6 章</span>記憶體峽谷 · 過橋檢查</h2>
+  <p class="sub">把你剛剛做出來的檔案放上磅秤。</p>
+  <div class="canyon">
+    <div class="caption" id="cap"></div>
+    <div class="village">🏡 邊緣村 →</div>
+    <div class="cliff l"></div><div class="cliff r"></div>
+    <div class="plank" id="plank"></div>
+    <div class="sign" id="sign"></div>
+    <div class="hero" id="hero"></div>
+    <div class="villain" id="villain"></div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <div class="panel grow">
+      <div class="muted" style="font-size:13px">磅秤讀數</div>
+      <div class="gauge"><div class="fill" id="fill"></div><div class="lim" id="lim"></div><div class="limt" id="limt"></div></div>
+      <div class="stats" style="margin-top:12px">
+        <div class="stat"><span class="k">量化前（F16）</span><span class="v sky" id="before"></span></div>
+        <div class="stat"><span class="k">量化後（Q4_0）</span><span class="v gold" id="after">?</span></div>
+        <div class="stat"><span class="k">縮小成原本的</span><span class="v mint" id="ratio">?</span></div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:12px"><button class="ghost" id="replay">🔁 重播</button></div>
+</div>
+<script>
+  (function () {
+    const D = window.DATA;
+    const max = Math.max(D.before_mb, D.limit_mb) * 1.08;
+    $('#sign').textContent = `限重 ${D.limit_mb} MB`;
+    $('#before').textContent = D.before_mb.toFixed(1) + ' MB';
+    $('#lim').style.left = (D.limit_mb / max) * 100 + '%';
+    $('#limt').style.left = (D.limit_mb / max) * 100 + '%';
+    $('#limt').textContent = `限重 ${D.limit_mb} MB`;
+    $('#hero').innerHTML = sprite('smol', 4);
+    $('#villain').innerHTML = sprite('oom', 5);
+    let timers = [];
+    const later = (ms, fn) => timers.push(setTimeout(fn, ms));
+    function play() {
+      timers.forEach(clearTimeout);
+      timers = [];
+      const hero = $('#hero'), fill = $('#fill');
+      hero.style.transition = 'none';
+      hero.style.left = '5%'; hero.style.bottom = '43%'; hero.style.transform = 'scale(2.1)';
+      fill.style.transition = 'none';
+      fill.style.width = (D.before_mb / max) * 100 + '%';
+      fill.style.background = 'var(--red)';
+      $('#plank').classList.remove('broken');
+      $('#villain').style.transform = '';
+      $('#after').textContent = '?'; $('#ratio').textContent = '?';
+      $('#cap').innerHTML = `<span class="red">小史莫（F16）：${D.before_mb.toFixed(1)} MB —— 太重了！</span>`;
+      void hero.offsetWidth;
+      hero.style.transition = ''; fill.style.transition = '';
+      later(1300, () => {
+        $('#cap').innerHTML = '<span class="gold">✨ Q4_0 量化術！✨</span>';
+        hero.style.transform = 'scale(1)';
+        fill.style.width = (D.after_mb / max) * 100 + '%';
+        fill.style.background = '';
+        $('#after').textContent = D.after_mb.toFixed(1) + ' MB';
+        $('#ratio').textContent = ((D.after_mb / D.before_mb) * 100).toFixed(1) + '%';
+      });
+      later(2900, () => {
+        if (D.ok) {
+          $('#cap').innerHTML = `<span class="mint">✅ ${D.after_mb.toFixed(1)} MB < ${D.limit_mb} MB，過橋！</span>`;
+          hero.style.left = '82%';
+          later(900, () => { $('#villain').classList.add('shake'); $('#villain').style.transform = 'translateY(-10px)'; });
+          later(1700, () => { $('#cap').innerHTML = '<span class="mint">✅ 過橋成功！</span>　<span style="color:#b794ff">魔王：「怎、怎麼可能？！」</span>'; confetti(); });
+        } else {
+          $('#cap').innerHTML = `<span class="red">❌ ${D.after_mb.toFixed(1)} MB 還是超過 ${D.limit_mb} MB……</span>`;
+          hero.style.left = '30%';
+          later(1100, () => { $('#plank').classList.add('broken'); hero.style.bottom = '20%'; });
+        }
+      });
+    }
+    $('#replay').addEventListener('click', play);
+    play();
+  })();
+</script>
